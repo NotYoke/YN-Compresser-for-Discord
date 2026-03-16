@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Discord動画圧縮</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f0f10;--s1:#18181b;--s2:#222226;--s3:#2a2a30;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --accent:#5865F2;--accent-h:#6875f5;--accent-dim:rgba(88,101,242,0.15);
+  --text:#ededf0;--text2:#8e8ea0;--text3:#52525e;
+  --ok:#3ba55c;--ok-bg:rgba(59,165,92,0.13);
+  --warn:#faa61a;--warn-bg:rgba(250,166,26,0.13);
+  --danger:#ed4245;--danger-bg:rgba(237,66,69,0.13);
+  --r:10px;--r-sm:6px;--mono:'Courier New',monospace;
+}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;
+  font-size:14px;height:100vh;display:flex;flex-direction:column;overflow:hidden;user-select:none}
+
+/* ── titlebar ── */
+.tb{-webkit-app-region:drag;height:38px;background:var(--s1);
+  border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;flex-shrink:0}
+.tb-logo{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--text2)}
+.tb-logo svg{flex-shrink:0}
+.tb-ctrls{-webkit-app-region:no-drag;margin-left:auto;display:flex;gap:7px}
+.tb-btn{width:12px;height:12px;border-radius:50%;border:none;cursor:pointer;transition:filter .15s}
+.tb-btn:hover{filter:brightness(1.25)}
+.tb-min{background:#f1c40f}.tb-cls{background:#ed4245}
+
+/* ── scroll area ── */
+.scroll{flex:1;overflow-y:auto;padding:18px 18px 24px}
+.scroll::-webkit-scrollbar{width:3px}
+.scroll::-webkit-scrollbar-thumb{background:var(--border2);border-radius:99px}
+
+/* ── drop zone ── */
+.drop{border:1.5px dashed var(--border2);border-radius:var(--r);padding:32px 20px;
+  text-align:center;cursor:pointer;transition:all .15s}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-dim)}
+.drop-icon{width:48px;height:48px;margin:0 auto 14px;background:var(--s2);
+  border-radius:12px;display:flex;align-items:center;justify-content:center}
+.drop p{font-size:14px;color:var(--text2);line-height:1.6}
+.drop em{color:var(--accent);font-style:normal;font-weight:500}
+.drop small{font-size:11px;color:var(--text3);display:block;margin-top:5px}
+
+/* ── file card ── */
+.file-card{display:none;background:var(--s1);border:1px solid var(--border);
+  border-radius:var(--r);padding:11px 13px;margin-top:10px;align-items:center;gap:10px}
+.file-card.on{display:flex}
+.fc-icon{width:38px;height:38px;background:var(--accent-dim);border-radius:8px;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.fc-info{flex:1;min-width:0}
+.fc-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fc-meta{font-size:11px;color:var(--text2);font-family:var(--mono);margin-top:2px}
+.fc-badge{font-size:11px;font-family:var(--mono);font-weight:600;
+  padding:3px 9px;border-radius:99px;flex-shrink:0}
+.b-ok{background:var(--ok-bg);color:var(--ok)}
+.b-warn{background:var(--warn-bg);color:var(--warn)}
+.b-danger{background:var(--danger-bg);color:var(--danger)}
+
+/* ── panel ── */
+.panel{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);
+  padding:14px;margin-top:10px}
+.panel-title{font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;
+  color:var(--text3);margin-bottom:13px}
+
+/* fields */
+.field{margin-bottom:13px}.field:last-child{margin-bottom:0}
+.fl{font-size:12px;color:var(--text2);margin-bottom:6px;
+  display:flex;justify-content:space-between;align-items:center}
+.fl b{font-family:var(--mono);font-size:12px;color:var(--text);font-weight:500}
+
+/* target buttons */
+.tbns{display:flex;gap:6px}
+.tbn{flex:1;padding:8px 0;font-size:12px;font-family:inherit;border-radius:var(--r-sm);
+  border:1px solid var(--border2);background:var(--s2);cursor:pointer;
+  color:var(--text2);transition:all .1s;line-height:1.4;text-align:center}
+.tbn:hover{border-color:var(--accent);color:var(--text)}
+.tbn.on{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);font-weight:500}
+.tbn-sub{font-size:10px;opacity:.6;display:block}
+
+/* range */
+input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:99px;
+  background:var(--s3);outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;
+  border-radius:50%;background:var(--accent);cursor:pointer;transition:transform .1s}
+input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.18)}
+.range-hints{display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-top:4px}
+
+/* main button */
+.go-btn{width:100%;margin-top:13px;padding:12px;font-size:14px;font-weight:600;
+  font-family:inherit;border-radius:var(--r);border:none;
+  background:var(--accent);color:#fff;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s}
+.go-btn:hover:not(:disabled){background:var(--accent-h)}
+.go-btn:disabled{opacity:.35;cursor:not-allowed}
+
+/* progress */
+.prog{display:none;background:var(--s1);border:1px solid var(--border);
+  border-radius:var(--r);padding:14px;margin-top:10px}
+.prog.on{display:block}
+.prog-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
+.prog-lbl{font-size:13px;font-weight:500}
+.prog-pct{font-family:var(--mono);font-size:13px;color:var(--accent)}
+.prog-bg{height:6px;border-radius:99px;background:var(--s3);overflow:hidden}
+.prog-bar{height:100%;border-radius:99px;background:var(--accent);width:0%;transition:width .3s}
+.cancel-btn{margin-top:9px;width:100%;padding:7px;font-size:12px;font-family:inherit;
+  border-radius:var(--r-sm);border:1px solid var(--border2);background:transparent;
+  cursor:pointer;color:var(--text2);transition:all .1s}
+.cancel-btn:hover{border-color:var(--danger);color:var(--danger)}
+
+/* result */
+.result{display:none;background:var(--s1);border:1px solid var(--border);
+  border-radius:var(--r);padding:14px;margin-top:10px}
+.result.on{display:block}
+.res-hd{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.res-ico{width:30px;height:30px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.res-ico.ok{background:var(--ok-bg)}
+.res-ico.ng{background:var(--warn-bg)}
+.res-title{font-size:14px;font-weight:500}
+.res-row{display:flex;justify-content:space-between;font-size:12px;
+  padding:6px 0;border-bottom:1px solid var(--border)}
+.res-row:last-of-type{border:none}
+.res-row .k{color:var(--text2)}.res-row .v{font-family:var(--mono);font-weight:500}
+.v-ok{color:var(--ok)}.v-warn{color:var(--warn)}
+.acts{display:flex;gap:7px;margin-top:11px}
+.act{flex:1;padding:9px;font-size:13px;font-family:inherit;border-radius:var(--r-sm);
+  border:1px solid var(--border2);background:var(--s2);cursor:pointer;
+  color:var(--text);transition:all .1s}
+.act:hover{border-color:var(--accent)}
+.act.prim{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+</style>
+</head>
+<body>
+
+<div class="tb">
+  <div class="tb-logo">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5865F2" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2" y="2" width="20" height="20" rx="3"/>
+      <polygon points="10,8 16,12 10,16"/>
+    </svg>
+    Discord動画圧縮
+  </div>
+  <div class="tb-ctrls">
+    <button class="tb-btn tb-min" onclick="window.api.minimize()"></button>
+    <button class="tb-btn tb-cls" onclick="window.api.close()"></button>
+  </div>
+</div>
+
+<div class="scroll">
+
+  <!-- drop zone -->
+  <div class="drop" id="dz" onclick="pickFile()">
+    <div class="drop-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5865F2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+    </div>
+    <p>動画ファイルをここにドロップ<br>または<em>クリックして選択</em></p>
+    <small>MP4 / MOV / AVI / MKV / WEBM など対応</small>
+  </div>
+
+  <!-- file info -->
+  <div class="file-card" id="fc">
+    <div class="fc-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5865F2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="23 7 16 12 23 17 23 7"/>
+        <rect x="1" y="5" width="15" height="14" rx="2"/>
+      </svg>
+    </div>
+    <div class="fc-info">
+      <div class="fc-name" id="fcName"></div>
+      <div class="fc-meta" id="fcMeta"></div>
+    </div>
+    <div class="fc-badge" id="fcBadge"></div>
+  </div>
+
+  <!-- settings panel -->
+  <div class="panel" id="settingsPanel" style="display:none">
+    <div class="panel-title">圧縮設定</div>
+
+    <div class="field">
+      <div class="fl">目標サイズ（Discordの上限は10MB）</div>
+      <div class="tbns">
+        <button class="tbn on" data-mb="8" onclick="setMB(8)">8 MB<span class="tbn-sub">余裕あり</span></button>
+        <button class="tbn" data-mb="9" onclick="setMB(9)">9 MB<span class="tbn-sub">推奨</span></button>
+        <button class="tbn" data-mb="9.5" onclick="setMB(9.5)">9.5 MB<span class="tbn-sub">ギリギリ</span></button>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="fl">画質 <b id="qVal">7</b></div>
+      <input type="range" id="qSlider" min="1" max="10" value="7"
+        oninput="document.getElementById('qVal').textContent=this.value">
+      <div class="range-hints"><span>小さく優先</span><span>バランス</span><span>高画質優先</span></div>
+    </div>
+
+    <button class="go-btn" id="goBtn" onclick="startCompress()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="8 17 12 21 16 17"/><line x1="12" y1="3" x2="12" y2="21"/>
+      </svg>
+      圧縮スタート
+    </button>
+  </div>
+
+  <!-- progress -->
+  <div class="prog" id="progSection">
+    <div class="prog-hd">
+      <span class="prog-lbl">圧縮中...</span>
+      <span class="prog-pct" id="progPct">0%</span>
+    </div>
+    <div class="prog-bg"><div class="prog-bar" id="progBar"></div></div>
+    <button class="cancel-btn" onclick="doCancel()">キャンセル</button>
+  </div>
+
+  <!-- result -->
+  <div class="result" id="resultSection">
+    <div class="res-hd">
+      <div class="res-ico" id="resIco"></div>
+      <div class="res-title" id="resTitle"></div>
+    </div>
+    <div class="res-row"><span class="k">元のサイズ</span><span class="v" id="rOrig"></span></div>
+    <div class="res-row"><span class="k">圧縮後</span><span class="v" id="rComp"></span></div>
+    <div class="res-row"><span class="k">削減率</span><span class="v" id="rReduc"></span></div>
+    <div class="res-row"><span class="k">Discordで送信</span><span class="v" id="rDiscord"></span></div>
+    <div class="acts">
+      <button class="act" onclick="openFolder()">フォルダを開く</button>
+      <button class="act prim" onclick="reset()">別の動画を圧縮</button>
+    </div>
+  </div>
+
+</div><!-- /scroll -->
+
+<script>
+let file = null, outPath = null, targetMB = 8, busy = false;
+
+const fmt = b => b < 1048576 ? (b/1024).toFixed(1)+' KB' : (b/1048576).toFixed(2)+' MB';
+
+function setMB(v) {
+  targetMB = v;
+  document.querySelectorAll('.tbn').forEach(b => b.classList.toggle('on', +b.dataset.mb === v));
+}
+
+async function pickFile() {
+  const info = await window.api.selectFile();
+  if (info) loadFile(info);
+}
+
+async function loadFile(info) {
+  file = info; outPath = null;
+  const fc = document.getElementById('fc');
+  fc.classList.add('on');
+  document.getElementById('fcName').textContent = info.name;
+
+  const mb = info.size / 1048576;
+  const badge = document.getElementById('fcBadge');
+  badge.textContent = fmt(info.size);
+  badge.className = 'fc-badge ' + (mb <= 10 ? 'b-ok' : mb <= 50 ? 'b-warn' : 'b-danger');
+
+  let meta = fmt(info.size);
+  const vi = await window.api.getVideoInfo(info.path);
+  if (vi.duration) meta += '　' + Math.floor(vi.duration) + '秒';
+  if (vi.width && vi.height) meta += '　' + vi.width + '×' + vi.height;
+  document.getElementById('fcMeta').textContent = meta;
+
+  document.getElementById('settingsPanel').style.display = 'block';
+  document.getElementById('resultSection').classList.remove('on');
+  document.getElementById('progSection').classList.remove('on');
+}
+
+// ドラッグ&ドロップ
+const dz = document.getElementById('dz');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('over');
+  // Electronではdrop時にpath属性が使える
+  const f = e.dataTransfer.files[0];
+  if (f) {
+    const stat_size = f.size;
+    loadFile({ path: f.path, name: f.name, size: stat_size });
+  }
+});
+
+async function startCompress() {
+  if (!file || busy) return;
+  busy = true;
+  document.getElementById('goBtn').disabled = true;
+
+  // 出力パスを自動生成（入力ファイルと同じフォルダ）
+  const ext = file.name.lastIndexOf('.');
+  const base = ext > 0 ? file.name.slice(0, ext) : file.name;
+  const dir = file.path.replace(/[^\\/]+$/, '');
+  outPath = dir + base + '_compressed.mp4';
+
+  const prog = document.getElementById('progSection');
+  prog.classList.add('on');
+  document.getElementById('progBar').style.width = '0%';
+  document.getElementById('progPct').textContent = '0%';
+
+  window.api.onProgress(pct => {
+    document.getElementById('progBar').style.width = pct + '%';
+    document.getElementById('progPct').textContent = pct + '%';
+  });
+
+  try {
+    const quality = +document.getElementById('qSlider').value;
+    const r = await window.api.compressVideo({
+      inputPath: file.path, outputPath: outPath, targetMB, quality
+    });
+    showResult(r);
+  } catch (e) {
+    prog.classList.remove('on');
+    if (!e.message.includes('キャンセル')) alert('エラーが発生しました:\n' + e.message);
+  } finally {
+    window.api.offProgress();
+    busy = false;
+    document.getElementById('goBtn').disabled = false;
+  }
+}
+
+function showResult(r) {
+  document.getElementById('progSection').classList.remove('on');
+  const rs = document.getElementById('resultSection');
+  rs.classList.add('on');
+  const ok = r.outputSize <= 10 * 1048576;
+  const reduc = ((file.size - r.outputSize) / file.size * 100).toFixed(1);
+
+  document.getElementById('rOrig').textContent = fmt(file.size);
+  document.getElementById('rComp').textContent = fmt(r.outputSize);
+  document.getElementById('rComp').className = 'v ' + (ok ? 'v-ok' : 'v-warn');
+  document.getElementById('rReduc').textContent = '-' + reduc + '%';
+  document.getElementById('rDiscord').textContent = ok ? '✓ 送信できます！' : '✗ まだ大きいです';
+  document.getElementById('rDiscord').className = 'v ' + (ok ? 'v-ok' : 'v-warn');
+  document.getElementById('resIco').textContent = ok ? '✓' : '!';
+  document.getElementById('resIco').className = 'res-ico ' + (ok ? 'ok' : 'ng');
+  document.getElementById('resTitle').textContent = ok
+    ? '圧縮完了！Discordに送信できます'
+    : '圧縮完了（画質を下げるとさらに小さくなります）';
+}
+
+function doCancel() {
+  window.api.cancelCompress();
+  busy = false;
+  document.getElementById('progSection').classList.remove('on');
+  document.getElementById('goBtn').disabled = false;
+}
+
+function openFolder() { if (outPath) window.api.openFolder(outPath); }
+
+function reset() {
+  file = null; outPath = null;
+  document.getElementById('fc').classList.remove('on');
+  document.getElementById('settingsPanel').style.display = 'none';
+  document.getElementById('resultSection').classList.remove('on');
+  document.getElementById('progSection').classList.remove('on');
+}
+</script>
+</body>
+</html>
